@@ -1,6 +1,7 @@
 # coding: utf-8
 
 import random
+import math
 
 # ----------------------< Game rules constants  >-----------------------------------------------------------------------
 
@@ -22,7 +23,6 @@ TRIGGER_OCCURRENCE_FOR_BONUS = 3
 BONUS_VALUE_FOR_ACE_BONUS = 1000
 # Standard multiplier for multiple dices value bonus
 BONUS_VALUE_FOR_NORMAL_BONUS = 100
-
 
 # ----------------------< Class handling roll statistics by individual turn >-------------------------------------------
 # constructor parameters :                  None
@@ -240,7 +240,6 @@ class DiceGameStatistics:
         self._nb_non_scoring_turn = 0
         self._sigma_scoring = 0
         self._sigma_non_scoring = 0
-
 
 # ----------------------< Class handling game dice turns >--------------------------------------------------------------
 # constructor parameters :
@@ -939,7 +938,113 @@ class DiceGameController:
 
         view.print_final_status(self._dice_game_model, self._verbose)
 
+# ----------------------< Class handling occurence distribution data representation >-------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------------------
+class OccurenceDistribution():
+    def __init__(self, interval):
+        self.occurrences = dict()
+        self.interval = interval
 
+    def __str__(self):
+        output_str = ''
+        i = 0
+        for i in sorted(self.occurrences.keys()):
+            if i != 0:
+                output_str += '%9s ' % str((i-1)*self.interval+1) + '- '
+            else:
+                output_str += '%9s - ' % str(0)
+            output_str += '%5s: \t %5s\n' % (str(i*self.interval), str(self.occurrences[i]))
+
+        return output_str
+            
+    def push(self, value):
+        # Finding index in dictionnary
+        occurence_index = math.ceil(value / self.interval)
+
+        if occurence_index in self.occurrences:
+            self.occurrences[occurence_index] += 1
+        else:
+            self.occurrences[occurence_index] = 1
+
+
+# ----------------------< Class handling game statistics by individual turn >-------------------------------------------
+# constructor parameters :
+#   nb_dices                                Number of dices in the game set
+#   nb_turns                                Number of turn samples you want to analyze
+#   interval                                Interval between each set of values in the score distribution
+#
+# public methods :
+#   run()                                   Launch analyze function
+#
+#   reset_statistics()                      Reset all saved statistics
+# ----------------------------------------------------------------------------------------------------------------------
+class DiceGameStatisticsAnalyze():
+    def __init__(self, nb_dices, nb_turns, interval):
+        self._nb_turns = nb_turns
+        self._turn = DiceGameTurn(nb_dices)
+        
+        self.sum_all_scores = 0
+        self.max_score = 0
+        self.mean_score = 0
+
+        self.max_rolls_number = 0
+        self.max_bonus_in_a_turn = 0
+        self.score_distribution = OccurenceDistribution(interval)
+    
+    def __str__(self):
+        output_str = 'Turns number: \t\t' + str(self._nb_turns) + '\n'
+        output_str += '\nMax score: \t\t' + str(self.max_score)
+        output_str += '\nAverage score: \t\t' + str(self.mean_score)
+        output_str += '\nMax rolls number: \t' + str(self.max_rolls_number)
+        output_str += '\nMax bonuses in a turn: \t' + str(self.max_bonus_in_a_turn)
+        output_str += '\n\nScore distribution: \n' + str(self.score_distribution)
+        return output_str
+
+    def run(self):
+        def play_until_fail():
+            while self._turn.nb_dices_to_roll != 0:
+                self._turn.roll_dices_and_count_roll_score()
+
+        def update_game_statistics():
+            turn_statistics = self._turn.turn_statistics
+
+            self.score_distribution.push(self._turn.turn_lost_score)
+
+            if self.max_rolls_number < self._turn.turn_statistics.turn_nb_roll:
+                self.max_rolls_number = self._turn.turn_statistics.turn_nb_roll
+
+            if self.max_bonus_in_a_turn < turn_statistics.turn_nb_bonus:
+                self.max_bonus_in_a_turn = turn_statistics.turn_nb_bonus
+
+            if self.max_score < self._turn.turn_lost_score:
+                self.max_score = self._turn.turn_lost_score
+
+            self.sum_all_scores += self._turn.turn_lost_score
+
+        turns_index = 0
+        while turns_index < self._nb_turns:       
+            # Creates samples
+            play_until_fail()
+            update_game_statistics()
+
+            # Reset instance data
+            self._turn.prepare_for_next_turn()
+
+            turns_index += 1
+
+        self.mean_score = self.sum_all_scores / self._nb_turns
+
+        return 0
+
+    def reset_statistics(self):
+        self.max_score = 0
+        self.mean_score = 0
+        self.min_score = 0
+        self.max_rolls_number = 0
+        self.max_bonus_in_a_turn = 0
+        self.score_distribution = []
+
+# ------------------------------------------------------------------------------------------------------------------------------
 game_target_score = 5000
 game_players_names_list = ['Stéphane', 'Romain', 'François', 'Isabelle', 'Christophe', 'Laurent', "Sylvie"]
 
@@ -948,7 +1053,13 @@ game_players_names_list = ['Stéphane', 'Romain', 'François', 'Isabelle', 'Chri
 #       - Remaining dice to roll threshold  (_choice_critter_value < 0)
 game_choice_critter_value = 0
 
-dice_controller = DiceGameController(game_players_names_list, nb_dices=5, target_score=game_target_score, verbose=True,
-                                     interactive=False, choice_critter_value=game_choice_critter_value)
+# dice_controller = DiceGameController(game_players_names_list, nb_dices=5, target_score=game_target_score, verbose=True,
+                                    #  interactive=False, choice_critter_value=game_choice_critter_value)
 
-dice_controller.run_full_game()
+# dice_controller.run_full_game()
+
+dice_game_analyzer = DiceGameStatisticsAnalyze(nb_dices = 5, nb_turns = 100000, interval = 50)
+
+dice_game_analyzer.run()
+
+print(dice_game_analyzer)
