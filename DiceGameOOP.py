@@ -944,9 +944,15 @@ class OccurenceDistribution():
     def __init__(self, interval):
         self.occurrences = dict()
         self.interval = interval
+        self.occurrences_number = 0
+        self.max_index = -1
+        self.acc = 0
+        self.mean = 0
 
     def __str__(self):
-        output_str = ''
+        output_str = 'Max occurences in range:\t' + str(self.max_index*self.interval - (self.interval - 1)) + ' - ' + str(self.max_index*self.interval) + '\n'
+        output_str += 'Mean value:\t\t\t' +'%.2f' % self.mean + '\n\n'
+
         i = 0
         for i in sorted(self.occurrences.keys()):
             if i != 0:
@@ -956,8 +962,19 @@ class OccurenceDistribution():
             output_str += '%5s: \t %5s\n' % (str(i*self.interval), str(self.occurrences[i]))
 
         return output_str
-            
+
     def push(self, value):
+        def update_stats(index):
+            self.occurrences_number += 1
+            self.acc += value
+            self.mean = self.acc / self.occurrences_number
+
+            if self.max_index == -1:
+                self.max_index = index
+            else:
+                if self.occurrences[self.max_index] < self.occurrences[index]:
+                    self.max_index = index
+        
         # Finding index in dictionnary
         occurence_index = math.ceil(value / self.interval)
 
@@ -966,6 +983,7 @@ class OccurenceDistribution():
         else:
             self.occurrences[occurence_index] = 1
 
+        update_stats(occurence_index)
 
 # ----------------------< Class handling game statistics by individual turn >-------------------------------------------
 # constructor parameters :
