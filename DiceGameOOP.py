@@ -3,6 +3,9 @@
 import random
 import math
 
+import pandas as pd
+import xlsxwriter
+
 # ----------------------< Game rules constants  >-----------------------------------------------------------------------
 
 # Number of dices by default in the set
@@ -946,6 +949,7 @@ class OccurenceDistribution():
         self.interval = interval
         self.occurrences_number = 0
         self.max_index = -1
+        self.max = 0    # max only can be calculated for positive values
         self.acc = 0
         self.mean = 0
 
@@ -964,11 +968,13 @@ class OccurenceDistribution():
         return output_str
 
     def push(self, value):
-        def update_stats(index):
+        def update_stats(index, value):
             self.occurrences_number += 1
             self.acc += value
             self.mean = self.acc / self.occurrences_number
 
+            if self.max < value:
+                self.max = value
             if self.max_index == -1:
                 self.max_index = index
             else:
@@ -983,7 +989,7 @@ class OccurenceDistribution():
         else:
             self.occurrences[occurence_index] = 1
 
-        update_stats(occurence_index)
+        update_stats(occurence_index, value)
 
 # ----------------------< Class handling game statistics by individual turn >-------------------------------------------
 # constructor parameters :
@@ -1001,43 +1007,57 @@ class DiceGameStatisticsAnalyze():
         self._nb_turns = nb_turns
         self._turn = DiceGameTurn(nb_dices)
         
-        self.sum_all_scores = 0
-        self.max_score = 0
-        self.mean_score = 0
+        self.nb_dices_to_roll_distribution = OccurenceDistribution(1)
+        self.nb_dices_fail_roll_distribution = OccurenceDistribution(1)
+        self.nb_bonus_distribution = OccurenceDistribution(1)
 
-        self.max_rolls_number = 0
-        self.max_bonus_in_a_turn = 0
+        self.nb_full_roll_distribution = OccurenceDistribution(1)
+
+        self.roll_distribution = OccurenceDistribution(interval)
+        self.nb_roll_distribution = OccurenceDistribution(1)
         self.score_distribution = OccurenceDistribution(interval)
     
     def __str__(self):
         output_str = 'Turns number: \t\t' + str(self._nb_turns) + '\n'
-        output_str += '\nMax score: \t\t' + str(self.max_score)
-        output_str += '\nAverage score: \t\t' + str(self.mean_score)
-        output_str += '\nMax rolls number: \t' + str(self.max_rolls_number)
-        output_str += '\nMax bonuses in a turn: \t' + str(self.max_bonus_in_a_turn)
+        output_str += '\nMax score: \t\t' + str(self.score_distribution.max)
+        output_str += '\nAverage score: \t\t' + str(self.score_distribution.mean)
+        output_str += '\nMax rolls number: \t' + str(self.nb_roll_distribution.max)
+        output_str += '\nMax bonuses in a turn: \t' + str(self.nb_bonus_distribution.max)
         output_str += '\n\nScore distribution: \n' + str(self.score_distribution)
         return output_str
 
     def run(self):
         def play_until_fail():
             while self._turn.nb_dices_to_roll != 0:
+                nb_dices = self._turn.nb_dices_to_roll
+                self.nb_dices_to_roll_distribution.push(nb_dices)
+                
                 self._turn.roll_dices_and_count_roll_score()
+
+                self.nb_full_roll_distribution.push(self._turn.turn_statistics.turn_nb_full_roll)
+                self.roll_distribution.push(self._turn.roll_score)
+
+                if self._turn.nb_dices_to_roll == 0:
+                    self.nb_dices_fail_roll_distribution.push(nb_dices)
 
         def update_game_statistics():
             turn_statistics = self._turn.turn_statistics
 
             self.score_distribution.push(self._turn.turn_lost_score)
+            self.nb_roll_distribution.push(turn_statistics.turn_nb_roll)
+            self.nb_bonus_distribution.push(turn_statistics.turn_nb_bonus)
 
-            if self.max_rolls_number < self._turn.turn_statistics.turn_nb_roll:
-                self.max_rolls_number = self._turn.turn_statistics.turn_nb_roll
+        def write_excel():
+            dataframe = pd.DataFrame({
+                '':['Nb turns','Roll score', 'Turn score', 'Turn nb roll', 'Turn nb full roll', 'Turn nb bonus', 'Roll nb dice fail roll', 'Roll nb dice to roll'],
+                'Max':[self._nb_turns, self.roll_distribution.max, self.score_distribution.max, self.nb_roll_distribution.max, self.nb_full_roll_distribution.max, self.nb_bonus_distribution.max, self.nb_dices_fail_roll_distribution.max, self.nb_dices_to_roll_distribution.max],
+                'Mean':['-', self.roll_distribution.mean, self.score_distribution.mean, self.nb_roll_distribution.mean, self.nb_full_roll_distribution.mean, self.nb_bonus_distribution.mean, self.nb_dices_fail_roll_distribution.mean, self.nb_dices_to_roll_distribution.mean]
+            })
 
-            if self.max_bonus_in_a_turn < turn_statistics.turn_nb_bonus:
-                self.max_bonus_in_a_turn = turn_statistics.turn_nb_bonus
+            writer = pd.ExcelWriter('turns_statistics.xlsx', engine = 'xlsxwriter')
+            dataframe.to_excel(writer, sheet_name='Stats')
 
-            if self.max_score < self._turn.turn_lost_score:
-                self.max_score = self._turn.turn_lost_score
-
-            self.sum_all_scores += self._turn.turn_lost_score
+            writer.save()
 
         turns_index = 0
         while turns_index < self._nb_turns:       
@@ -1050,8 +1070,7 @@ class DiceGameStatisticsAnalyze():
 
             turns_index += 1
 
-        self.mean_score = self.sum_all_scores / self._nb_turns
-
+        write_excel()
         return 0
 
     def reset_statistics(self):
@@ -1076,7 +1095,7 @@ game_choice_critter_value = 0
 
 # dice_controller.run_full_game()
 
-dice_game_analyzer = DiceGameStatisticsAnalyze(nb_dices = 5, nb_turns = 100000, interval = 50)
+dice_game_analyzer = DiceGameStatisticsAnalyze(nb_dices = 5, nb_turns = 1000000, interval = 50)
 
 dice_game_analyzer.run()
 
