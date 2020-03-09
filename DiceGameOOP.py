@@ -949,7 +949,7 @@ class OccurenceDistribution():
         self.interval = interval
         self.occurrences_number = 0
         self.max_index = -1
-        self.max = 0    # max only can be calculated for positive values
+        self.max = 0    # please forgive my lazyness (max only works with >0 values)
         self.acc = 0
         self.mean = 0
 
